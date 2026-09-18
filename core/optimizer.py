@@ -1,12 +1,9 @@
 """
 Math Optimizer + Final Validator stage.
 
-Changes vs. the original:
-  1. The reported hourly_plan is RECONSTRUCTED from rounded values instead of
-     rounding each LP variable independently. This guarantees the judge's
-     hour-by-hour replay reproduces exactly the numbers we return.
-  2. Infeasible directive combinations degrade through a relaxation ladder
-     instead of returning 422 with no plan.
+The reported hourly_plan is reconstructed from rounded values instead of
+rounding each LP variable independently. This guarantees the judge's
+hour-by-hour replay reproduces exactly the numbers we return.
 """
 import math
 
@@ -230,42 +227,23 @@ def _final_validate(hourly_plan, hours_data, battery, effective_solar):
         raise OptimizationError("End-of-day battery neutrality violated.")
 
 
-# Relaxation ladder: keep physics hard, shed soft operator limits last-first.
-_RELAXATIONS = (
-    (),
-    ("max_grid_window",),
-    ("max_grid_window", "minimum_battery_reserve"),
-    ("max_grid_window", "minimum_battery_reserve", "no_charge_window", "no_discharge_window"),
-)
-
-
 def solve_energy_optimization(payload: dict, directives: list) -> dict:
     scenario_id = payload["scenario_id"]
     hours_data = payload["hours"]
     battery = payload["battery"]
 
-    last_err = None
-    for skip in _RELAXATIONS:
-        solar_factor, min_reserve, no_charge, no_discharge, max_grid = _apply_directives(
-            directives, battery["minimum_energy_kwh"], skip_types=skip
-        )
-        try:
-            grid, solar_used, charge, discharge, soc, effective_solar = _build_and_solve(
-                hours_data, battery, solar_factor, min_reserve,
-                no_charge, no_discharge, max_grid
-            )
-        except OptimizationError as exc:
-            last_err = exc
-            continue
-
-        hourly_plan = _reconstruct_plan(
-            charge, discharge, solar_used, hours_data, battery, effective_solar,
-            min_reserve, no_charge, no_discharge, max_grid
-        )
-        _final_validate(hourly_plan, hours_data, battery, effective_solar)
-        break
-    else:
-        raise OptimizationError(str(last_err) if last_err else "No feasible schedule.")
+    solar_factor, min_reserve, no_charge, no_discharge, max_grid = _apply_directives(
+        directives, battery["minimum_energy_kwh"]
+    )
+    grid, solar_used, charge, discharge, soc, effective_solar = _build_and_solve(
+        hours_data, battery, solar_factor, min_reserve,
+        no_charge, no_discharge, max_grid
+    )
+    hourly_plan = _reconstruct_plan(
+        charge, discharge, solar_used, hours_data, battery, effective_solar,
+        min_reserve, no_charge, no_discharge, max_grid
+    )
+    _final_validate(hourly_plan, hours_data, battery, effective_solar)
 
     total_grid_kwh = round(sum(e["grid_kwh"] for e in hourly_plan), 2)
     total_cost_bdt = round(
