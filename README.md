@@ -129,9 +129,6 @@ python manage.py runserver
 | `GEMINI_MODEL` | `gemini-2.5-flash` | |
 | `LLM_TIMEOUT_MS` | `12000` | Per-request timeout to Gemini. |
 
-> ⚠️ Don't commit `.env`. It's already excluded via `.gitignore` /
-> `.dockerignore`, but if a real key has ever been shared or committed,
-> rotate it.
 
 ### Tests
 ```bash
